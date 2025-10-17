@@ -32,7 +32,7 @@ impl Plugin for UnrealCameraPlugin {
         let app = app
             .add_systems(PreUpdate, on_controller_enabled_changed)
             .add_systems(Update, control_system)
-            .add_event::<ControlEvent>();
+            .add_message::<ControlMessage>();
         if !self.override_input_system {
             app.add_systems(Update, default_input_map);
         }
@@ -104,8 +104,8 @@ impl Default for UnrealCameraController {
     }
 }
 
-#[derive(Event)]
-pub enum ControlEvent {
+#[derive(Message)]
+pub enum ControlMessage {
     Locomotion(Vec2),
     Rotate(Vec2),
     TranslateEye(Vec2),
@@ -114,9 +114,9 @@ pub enum ControlEvent {
 define_on_controller_enabled_changed!(UnrealCameraController);
 
 pub fn default_input_map(
-    mut events: EventWriter<ControlEvent>,
-    mut mouse_wheel_reader: EventReader<MouseWheel>,
-    mut mouse_motion_events: EventReader<MouseMotion>,
+    mut messages: MessageWriter<ControlMessage>,
+    mut mouse_wheel_reader: MessageReader<MouseWheel>,
+    mut mouse_motion_messages: MessageReader<MouseMotion>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut controllers: Query<&mut UnrealCameraController>,
@@ -141,7 +141,7 @@ pub fn default_input_map(
     let middle_pressed = mouse_buttons.pressed(MouseButton::Middle);
 
     let mut cursor_delta = Vec2::ZERO;
-    for event in mouse_motion_events.read() {
+    for event in mouse_motion_messages.read() {
         cursor_delta += event.delta;
     }
 
@@ -215,23 +215,23 @@ pub fn default_input_map(
     }
 
     if !left_pressed && !middle_pressed && right_pressed {
-        events.write(ControlEvent::Rotate(
+        messages.write(ControlMessage::Rotate(
             mouse_rotate_sensitivity * cursor_delta,
         ));
     }
 
     if panning.length_squared() > 0.0 {
-        events.write(ControlEvent::TranslateEye(panning));
+        messages.write(ControlMessage::TranslateEye(panning));
     }
 
     if locomotion.length_squared() > 0.0 {
-        events.write(ControlEvent::Locomotion(locomotion));
+        messages.write(ControlMessage::Locomotion(locomotion));
     }
 }
 
 pub fn control_system(
     time: Res<Time>,
-    mut events: EventReader<ControlEvent>,
+    mut events: MessageReader<ControlMessage>,
     mut cameras: Query<(&UnrealCameraController, &mut LookTransform)>,
 ) {
     // Can only control one camera at a time.
@@ -250,17 +250,17 @@ pub fn control_system(
     let dt = time.delta_secs();
     for event in events.read() {
         match event {
-            ControlEvent::Locomotion(delta) => {
+            ControlMessage::Locomotion(delta) => {
                 // Translates forward/backward and rotates about the Y axis.
                 look_angles.add_yaw(dt * -delta.x);
                 transform.eye += dt * delta.y * look_vector;
             }
-            ControlEvent::Rotate(delta) => {
+            ControlMessage::Rotate(delta) => {
                 // Rotates with pitch and yaw.
                 look_angles.add_yaw(dt * -delta.x);
                 look_angles.add_pitch(dt * -delta.y);
             }
-            ControlEvent::TranslateEye(delta) => {
+            ControlMessage::TranslateEye(delta) => {
                 let yaw_rot = Quat::from_axis_angle(Vec3::Y, look_angles.get_yaw());
                 let rot_x = yaw_rot * Vec3::X;
 

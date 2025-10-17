@@ -29,7 +29,7 @@ impl Plugin for FpsCameraPlugin {
         let app = app
             .add_systems(PreUpdate, on_controller_enabled_changed)
             .add_systems(Update, control_system)
-            .add_event::<ControlEvent>();
+            .add_message::<ControlMessage>();
 
         if !self.override_input_system {
             app.add_systems(Update, default_input_map);
@@ -82,8 +82,8 @@ impl Default for FpsCameraController {
     }
 }
 
-#[derive(Event)]
-pub enum ControlEvent {
+#[derive(Message)]
+pub enum ControlMessage {
     Rotate(Vec2),
     TranslateEye(Vec3),
 }
@@ -91,9 +91,9 @@ pub enum ControlEvent {
 define_on_controller_enabled_changed!(FpsCameraController);
 
 pub fn default_input_map(
-    mut events: EventWriter<ControlEvent>,
+    mut messages: MessageWriter<ControlMessage>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut mouse_motion_events: EventReader<MouseMotion>,
+    mut mouse_motion_messages: MessageReader<MouseMotion>,
     controllers: Query<&FpsCameraController>,
 ) {
     // Can only control one camera at a time.
@@ -109,11 +109,11 @@ pub fn default_input_map(
     } = *controller;
 
     let mut cursor_delta = Vec2::ZERO;
-    for event in mouse_motion_events.read() {
+    for event in mouse_motion_messages.read() {
         cursor_delta += event.delta;
     }
 
-    events.write(ControlEvent::Rotate(
+    messages.write(ControlMessage::Rotate(
         mouse_rotate_sensitivity * cursor_delta,
     ));
 
@@ -129,13 +129,13 @@ pub fn default_input_map(
     .cloned()
     {
         if keyboard.pressed(key) {
-            events.write(ControlEvent::TranslateEye(translate_sensitivity * dir));
+            messages.write(ControlMessage::TranslateEye(translate_sensitivity * dir));
         }
     }
 }
 
 pub fn control_system(
-    mut events: EventReader<ControlEvent>,
+    mut messages: MessageReader<ControlMessage>,
     mut cameras: Query<(&FpsCameraController, &mut LookTransform)>,
     time: Res<Time>,
 ) {
@@ -155,14 +155,14 @@ pub fn control_system(
     let rot_z = yaw_rot * Vec3::Z;
 
     let dt = time.delta_secs();
-    for event in events.read() {
+    for event in messages.read() {
         match event {
-            ControlEvent::Rotate(delta) => {
+            ControlMessage::Rotate(delta) => {
                 // Rotates with pitch and yaw.
                 look_angles.add_yaw(dt * -delta.x);
                 look_angles.add_pitch(dt * -delta.y);
             }
-            ControlEvent::TranslateEye(delta) => {
+            ControlMessage::TranslateEye(delta) => {
                 // Translates up/down (Y) left/right (X) and forward/back (Z).
                 transform.eye += dt * delta.x * rot_x + dt * delta.y * rot_y + dt * delta.z * rot_z;
             }

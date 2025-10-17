@@ -32,7 +32,7 @@ impl Plugin for OrbitCameraPlugin {
         let app = app
             .add_systems(PreUpdate, on_controller_enabled_changed)
             .add_systems(Update, control_system)
-            .add_event::<ControlEvent>();
+            .add_message::<ControlMessage>();
 
         if !self.override_input_system {
             app.add_systems(Update, default_input_map);
@@ -89,8 +89,8 @@ impl Default for OrbitCameraController {
     }
 }
 
-#[derive(Event)]
-pub enum ControlEvent {
+#[derive(Message)]
+pub enum ControlMessage {
     Orbit(Vec2),
     TranslateTarget(Vec2),
     Zoom(f32),
@@ -99,9 +99,9 @@ pub enum ControlEvent {
 define_on_controller_enabled_changed!(OrbitCameraController);
 
 pub fn default_input_map(
-    mut events: EventWriter<ControlEvent>,
-    mut mouse_wheel_reader: EventReader<MouseWheel>,
-    mut mouse_motion_events: EventReader<MouseMotion>,
+    mut messages: MessageWriter<ControlMessage>,
+    mut mouse_wheel_reader: MessageReader<MouseWheel>,
+    mut mouse_motion_events: MessageReader<MouseMotion>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     controllers: Query<&OrbitCameraController>,
@@ -126,11 +126,13 @@ pub fn default_input_map(
     }
 
     if keyboard.pressed(KeyCode::ControlLeft) {
-        events.write(ControlEvent::Orbit(mouse_rotate_sensitivity * cursor_delta));
+        messages.write(ControlMessage::Orbit(
+            mouse_rotate_sensitivity * cursor_delta,
+        ));
     }
 
     if mouse_buttons.pressed(MouseButton::Right) {
-        events.write(ControlEvent::TranslateTarget(
+        messages.write(ControlMessage::TranslateTarget(
             mouse_translate_sensitivity * cursor_delta,
         ));
     }
@@ -144,12 +146,12 @@ pub fn default_input_map(
         };
         scalar *= 1.0 - scroll_amount * mouse_wheel_zoom_sensitivity;
     }
-    events.write(ControlEvent::Zoom(scalar));
+    messages.write(ControlMessage::Zoom(scalar));
 }
 
 pub fn control_system(
     time: Res<Time>,
-    mut events: EventReader<ControlEvent>,
+    mut messages: MessageReader<ControlMessage>,
     mut cameras: Query<(&OrbitCameraController, &mut LookTransform, &Transform)>,
 ) {
     // Can only control one camera at a time.
@@ -165,18 +167,18 @@ pub fn control_system(
     let radius = transform.radius();
 
     let dt = time.delta_secs();
-    for event in events.read() {
+    for event in messages.read() {
         match event {
-            ControlEvent::Orbit(delta) => {
+            ControlMessage::Orbit(delta) => {
                 look_angles.add_yaw(dt * -delta.x);
                 look_angles.add_pitch(dt * delta.y);
             }
-            ControlEvent::TranslateTarget(delta) => {
+            ControlMessage::TranslateTarget(delta) => {
                 let right_dir = scene_transform.rotation * -Vec3::X;
                 let up_dir = scene_transform.rotation * Vec3::Y;
                 transform.target += dt * delta.x * right_dir + dt * delta.y * up_dir;
             }
-            ControlEvent::Zoom(scalar) => {
+            ControlMessage::Zoom(scalar) => {
                 radius_scalar *= scalar;
             }
         }
