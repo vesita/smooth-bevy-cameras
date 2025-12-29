@@ -125,6 +125,7 @@ pub fn default_input_map(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut mouse_motion_messages: MessageReader<MouseMotion>,
     controllers: Query<&FpsCameraController>,
+    cursor_options: Single<&CursorOptions>,
 ) {
     // Can only control one camera at a time.
     let controller = if let Some(controller) = controllers.iter().find(|c| c.enabled) {
@@ -132,6 +133,10 @@ pub fn default_input_map(
     } else {
         return;
     };
+    
+    // Check if cursor is currently locked using the CursorOptions resource
+    let cursor_locked = cursor_options.grab_mode == CursorGrabMode::Locked;
+    
     let FpsCameraController {
         translate_sensitivity,
         mouse_rotate_sensitivity,
@@ -139,8 +144,11 @@ pub fn default_input_map(
     } = *controller;
 
     let mut cursor_delta = Vec2::ZERO;
-    for event in mouse_motion_messages.read() {
-        cursor_delta += event.delta;
+    // Only process mouse motion if cursor is locked
+    if cursor_locked {
+        for event in mouse_motion_messages.read() {
+            cursor_delta += event.delta;
+        }
     }
 
     messages.write(ControlMessage::Rotate(
