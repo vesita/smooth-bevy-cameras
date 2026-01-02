@@ -178,23 +178,27 @@ pub fn default_input_map(
         }
     }
 
-    messages.write(ControlMessage::Rotate(
-        mouse_rotate_sensitivity * cursor_delta,
-    ));
+    if cursor_delta != Vec2::ZERO {
+        messages.write(ControlMessage::Rotate(
+            mouse_rotate_sensitivity * cursor_delta,
+        ));
+    }
 
-    for (key, dir) in [
+    // Precompute translation vectors to avoid repeated calculations
+    let translation_keys = [
         (KeyCode::KeyW, Vec3::Z),
         (KeyCode::KeyA, Vec3::X),
         (KeyCode::KeyS, -Vec3::Z),
         (KeyCode::KeyD, -Vec3::X),
         (KeyCode::ShiftLeft, -Vec3::Y),
         (KeyCode::Space, Vec3::Y),
-    ]
-    .iter()
-    .cloned()
-    {
-        if keyboard.pressed(key) {
-            messages.write(ControlMessage::TranslateEye(translate_sensitivity * dir));
+    ];
+
+    let dt = 1.0; // Using 1.0 since the translation is already time-adjusted in the control system
+    for (key, dir) in &translation_keys {
+        if keyboard.pressed(*key) {
+            let translation = dt * translate_sensitivity * *dir;
+            messages.write(ControlMessage::TranslateEye(translation));
         }
     }
 }
@@ -250,32 +254,48 @@ pub fn control_system(
         }
     }
 
-    let look_vector = transform.look_direction().unwrap();
+    let look_vector = match transform.look_direction() {
+        Some(v) => v,
+        None => return, // Early return if look direction is invalid
+    };
+    
     let mut look_angles = LookAngles::from_vector(look_vector);
 
+    // Precompute rotation vectors to avoid repeated calculations
     let yaw_rot = Quat::from_axis_angle(Vec3::Y, look_angles.get_yaw());
     let rot_x = yaw_rot * Vec3::X;
     let rot_y = yaw_rot * Vec3::Y;
     let rot_z = yaw_rot * Vec3::Z;
 
     let dt = time.delta_secs();
+    let mut needs_target_update = false;
+    let mut eye_translation = Vec3::ZERO;
+
     for event in messages.read() {
         match event {
             ControlMessage::Rotate(delta) => {
                 // Rotates with pitch and yaw.
                 look_angles.add_yaw(dt * -delta.x);
                 look_angles.add_pitch(dt * -delta.y);
+                needs_target_update = true;
             }
             ControlMessage::TranslateEye(delta) => {
-                // Translates up/down (Y) left/right (X) and forward/back (Z).
-                transform.eye += dt * delta.x * rot_x + dt * delta.y * rot_y + dt * delta.z * rot_z;
+                // Accumulate translations to apply them all at once
+                eye_translation += dt * delta.x * rot_x + dt * delta.y * rot_y + dt * delta.z * rot_z;
+                needs_target_update = true;
             }
         }
     }
 
-    look_angles.assert_not_looking_up();
+    // Apply translation after processing all messages
+    if eye_translation != Vec3::ZERO {
+        transform.eye += eye_translation;
+    }
 
-    transform.target = transform.eye + transform.radius() * look_angles.unit_vector();
+    if needs_target_update {
+        look_angles.assert_not_looking_up();
+        transform.target = transform.eye + transform.radius() * look_angles.unit_vector();
+    }
 }
 
 /// System that handles changing cursor toggle mode via events
