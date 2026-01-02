@@ -6,14 +6,16 @@ use bevy::{
     ecs::prelude::*,
     input::{mouse::MouseMotion, prelude::*},
     math::prelude::*,
+    reflect::Reflect,
     time::Time,
     transform::components::Transform,
     window::{CursorGrabMode, CursorOptions},
 };
 
 /// Defines the cursor toggle mode for the FPS camera
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Reflect)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[reflect(PartialEq, Debug)]
 pub enum CursorToggleMode {
     /// Release cursor when Alt is pressed, lock when released
     Trigger,
@@ -23,7 +25,7 @@ pub enum CursorToggleMode {
 
 impl Default for CursorToggleMode {
     fn default() -> Self {
-        CursorToggleMode::Trigger
+        Self::Trigger
     }
 }
 
@@ -89,8 +91,9 @@ impl FpsCameraBundle {
 }
 
 /// Your typical first-person camera controller.
-#[derive(Clone, Component, Copy, Debug)]
+#[derive(Clone, Component, Copy, Debug, Reflect)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[reflect(Component, Debug)]
 pub struct FpsCameraController {
     pub enabled: bool,
     pub mouse_rotate_sensitivity: Vec2,
